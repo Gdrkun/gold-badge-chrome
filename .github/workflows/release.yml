@@ -19,7 +19,8 @@ jobs:
         run: |
           set -e
           mkdir -p dist/unpacked
-          cp -r src/* dist/unpacked/
+          # Exclude test/dev-only files (Chrome forbids names starting with "_").
+          rsync -a --delete --exclude '_*' src/ dist/unpacked/
           # Add a short install note for people downloading the ZIP.
           cat > dist/unpacked/INSTALL.txt <<'TXT'
           Au99.99 Badge (Chrome)
