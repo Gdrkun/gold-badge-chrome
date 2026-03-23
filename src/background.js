@@ -112,10 +112,44 @@ async function fetchSgeAu9999(cfg) {
   return { price, updateText, updateAt };
 }
 
+function parseStooqRow(csv) {
+  const lines = String(csv).trim().split(/\r?\n/);
+  if (lines.length < 2) return undefined;
+  const header = lines[0].split(',').map((s) => s.trim().toLowerCase());
+  const row = lines[1].split(',').map((s) => s.trim());
+  const idxClose = header.indexOf('close');
+  const idxDate = header.indexOf('date');
+  const idxTime = header.indexOf('time');
+  if (idxClose < 0) return undefined;
+  const close = Number(row[idxClose]);
+  if (!Number.isFinite(close)) return undefined;
+  const date = idxDate >= 0 ? row[idxDate] : '';
+  const time = idxTime >= 0 ? row[idxTime] : '';
+  const tsText = [date, time].filter(Boolean).join(' ');
+  return { close, tsText };
+}
+
 async function fetchIntlApprox(cfg) {
-  // International approx: XAUUSD (USD/oz) × USDCNY -> CNY/oz -> CNY/g
+  // International approx (near-real-time): prefer XAUCNY direct (CNY/oz), else XAUUSD×USDCNY.
   const OZ_TO_GRAM = 31.1034768;
 
+  // Prefer direct XAUCNY
+  try {
+    const url = 'https://stooq.com/q/l/?s=xaucny&f=sd2t2c&h&e=csv&t=' + Date.now();
+    const csv = await fetchText(url, { headers: { Accept: 'text/csv,*/*' } }, cfg.timeoutMs);
+    const row = parseStooqRow(csv);
+    if (row?.close != null) {
+      return {
+        cnyPerGram: row.close / OZ_TO_GRAM,
+        sourceText: 'Stooq XAUCNY',
+        tsText: row.tsText,
+      };
+    }
+  } catch {
+    // fall through
+  }
+
+  // Fallback: XAUUSD×USDCNY
   const xauUrl = 'https://stooq.com/q/l/?s=xauusd&f=sd2t2c&h&e=csv&t=' + Date.now();
   const fxUrl = 'https://stooq.com/q/l/?s=usdcny&f=sd2t2c&h&e=csv&t=' + Date.now();
 
@@ -124,21 +158,15 @@ async function fetchIntlApprox(cfg) {
     fetchText(fxUrl, { headers: { Accept: 'text/csv,*/*' } }, cfg.timeoutMs),
   ]);
 
-  const parseClose = (csv) => {
-    const lines = String(csv).trim().split(/\r?\n/);
-    if (lines.length < 2) return undefined;
-    const cols = lines[0].split(',');
-    const idx = cols.findIndex((c) => c.toLowerCase() === 'close');
-    if (idx < 0) return undefined;
-    const row = lines[1].split(',');
-    const v = Number(row[idx]);
-    return Number.isFinite(v) ? v : undefined;
-  };
+  const xau = parseStooqRow(xauCsv);
+  const fx = parseStooqRow(fxCsv);
+  if (!xau || !fx) return undefined;
 
-  const xau = parseClose(xauCsv);
-  const fx = parseClose(fxCsv);
-  if (xau == null || fx == null) return undefined;
-  return (xau * fx) / OZ_TO_GRAM;
+  return {
+    cnyPerGram: (xau.close * fx.close) / OZ_TO_GRAM,
+    sourceText: 'Stooq XAUUSD×USDCNY',
+    tsText: xau.tsText || fx.tsText,
+  };
 }
 
 async function setConfig(patch) {
@@ -199,9 +227,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
       if ((price == null || stale) && cfg.afterCloseMode === 'intl') {
         const intl = await fetchIntlApprox(cfg).catch(() => undefined);
-        if (intl != null) {
-          price = intl;
-          update = `Intl approx (XAUUSD×USDCNY)  ${sge.updateText || ''}`.trim();
+        if (intl?.cnyPerGram != null) {
+          price = intl.cnyPerGram;
+          update = `${intl.sourceText}${intl.tsText ? ` @ ${intl.tsText}` : ''}  ${sge.updateText || ''}`.trim();
         }
       }
 
@@ -216,7 +244,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       const badgeBg = stale ? '#1565C0' : '#2E7D32';
       const tooltipLines = [`${cfg.instid}: ${price != null ? price.toFixed(2) : '--'} ¥/g`];
       if (update) tooltipLines.push(String(update));
-      if (stale) tooltipLines.push('SGE closed/stale; showing fallback');
+      if (stale) tooltipLines.push('SGE closed/stale; showing fallback (approx)');
 
       await setBadge({
         text: badgeText,
