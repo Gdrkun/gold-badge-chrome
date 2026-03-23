@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Au99.99 Badge",
+  "version": "0.1.0",
+  "description": "Show SGE Au99.99 price on the toolbar badge.",
+  "action": {
+    "default_title": "Au99.99"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": [
+    "storage",
+    "offscreen"
+  ],
+  "host_permissions": [
+    "https://en.sge.com.cn/*"
+  ]
+}

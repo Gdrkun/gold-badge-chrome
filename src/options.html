@@ -1,0 +1,40 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Au99.99 Badge Options</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 16px; }
+      label { display: block; margin: 12px 0 6px; }
+      input { width: 220px; padding: 6px 8px; }
+      .row { margin: 10px 0; }
+      .muted { color: #666; font-size: 12px; }
+      button { margin-top: 14px; padding: 6px 10px; }
+      .ok { color: #2E7D32; font-size: 12px; margin-left: 8px; }
+    </style>
+  </head>
+  <body>
+    <h3>Au99.99 Badge</h3>
+
+    <div class="row">
+      <label>刷新间隔（秒）</label>
+      <input id="intervalSeconds" type="number" min="1" step="1" />
+      <div class="muted">建议 5~15 秒。太快可能更容易触发风控/失败。</div>
+    </div>
+
+    <div class="row">
+      <label>失败退避最大间隔（秒）</label>
+      <input id="backoffMaxSeconds" type="number" min="5" step="1" />
+    </div>
+
+    <div class="row">
+      <label>请求超时（毫秒）</label>
+      <input id="timeoutMs" type="number" min="1000" step="500" />
+    </div>
+
+    <button id="save">保存</button><span id="saved" class="ok" style="display:none;">已保存</span>
+
+    <script type="module" src="options.js"></script>
+  </body>
+</html>
