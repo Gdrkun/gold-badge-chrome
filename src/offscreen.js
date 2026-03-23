@@ -53,8 +53,11 @@ const DEFAULTS = {
 };
 
 async function getConfig() {
-  const stored = await chrome.storage.local.get(Object.keys(DEFAULTS));
-  return { ...DEFAULTS, ...stored, instid: DEFAULTS.instid };
+  // Some Chrome builds/environments may not expose storage in offscreen documents.
+  // Treat the service worker as the source of truth.
+  const res = await chrome.runtime.sendMessage({ type: 'GET_CONFIG' });
+  if (!res?.ok) return { ...DEFAULTS };
+  return { ...DEFAULTS, ...(res.config || {}) };
 }
 
 function formatBadge(price) {

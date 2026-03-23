@@ -5,10 +5,11 @@ const DEFAULTS = {
 };
 
 async function load() {
-  const cfg = await chrome.storage.local.get(DEFAULTS);
-  document.getElementById('intervalSeconds').value = String(cfg.intervalSeconds);
-  document.getElementById('timeoutMs').value = String(cfg.timeoutMs);
-  document.getElementById('backoffMaxSeconds').value = String(cfg.backoffMaxSeconds);
+  const res = await chrome.runtime.sendMessage({ type: 'GET_CONFIG' });
+  const cfg = res?.ok ? res.config : DEFAULTS;
+  document.getElementById('intervalSeconds').value = String(cfg.intervalSeconds ?? DEFAULTS.intervalSeconds);
+  document.getElementById('timeoutMs').value = String(cfg.timeoutMs ?? DEFAULTS.timeoutMs);
+  document.getElementById('backoffMaxSeconds').value = String(cfg.backoffMaxSeconds ?? DEFAULTS.backoffMaxSeconds);
 }
 
 async function save() {
@@ -16,10 +17,13 @@ async function save() {
   const timeoutMs = Number(document.getElementById('timeoutMs').value);
   const backoffMaxSeconds = Number(document.getElementById('backoffMaxSeconds').value);
 
-  await chrome.storage.local.set({
-    intervalSeconds: Math.max(1, Math.floor(intervalSeconds || DEFAULTS.intervalSeconds)),
-    timeoutMs: Math.max(1000, Math.floor(timeoutMs || DEFAULTS.timeoutMs)),
-    backoffMaxSeconds: Math.max(5, Math.floor(backoffMaxSeconds || DEFAULTS.backoffMaxSeconds)),
+  await chrome.runtime.sendMessage({
+    type: 'SET_CONFIG',
+    patch: {
+      intervalSeconds: Math.max(1, Math.floor(intervalSeconds || DEFAULTS.intervalSeconds)),
+      timeoutMs: Math.max(1000, Math.floor(timeoutMs || DEFAULTS.timeoutMs)),
+      backoffMaxSeconds: Math.max(5, Math.floor(backoffMaxSeconds || DEFAULTS.backoffMaxSeconds)),
+    },
   });
 
   // Ask offscreen loop to re-read config ASAP.

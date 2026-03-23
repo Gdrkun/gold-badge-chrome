@@ -23,10 +23,50 @@ async function ensureOffscreen() {
   });
 }
 
+const DEFAULTS = {
+  instid: 'Au99.99',
+  intervalSeconds: 5,
+  timeoutMs: 8000,
+  backoffMaxSeconds: 60,
+};
+
+async function getConfig() {
+  try {
+    const stored = await chrome.storage.local.get(Object.keys(DEFAULTS));
+    return { ...DEFAULTS, ...stored };
+  } catch {
+    return { ...DEFAULTS };
+  }
+}
+
+async function setConfig(patch) {
+  // Only allow known keys.
+  const next = {};
+  for (const k of Object.keys(DEFAULTS)) {
+    if (k in patch) next[k] = patch[k];
+  }
+  await chrome.storage.local.set(next);
+  return await getConfig();
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === 'SET_BADGE') {
     setBadge(msg.payload)
       .then(() => sendResponse({ ok: true }))
+      .catch((e) => sendResponse({ ok: false, error: String(e?.message || e) }));
+    return true;
+  }
+
+  if (msg?.type === 'GET_CONFIG') {
+    getConfig()
+      .then((config) => sendResponse({ ok: true, config }))
+      .catch((e) => sendResponse({ ok: false, error: String(e?.message || e) }));
+    return true;
+  }
+
+  if (msg?.type === 'SET_CONFIG') {
+    setConfig(msg.patch || {})
+      .then((config) => sendResponse({ ok: true, config }))
       .catch((e) => sendResponse({ ok: false, error: String(e?.message || e) }));
     return true;
   }
