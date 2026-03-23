@@ -1,49 +1,5 @@
-async function fetchWithTimeout(url, init, timeoutMs) {
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, { ...init, signal: controller.signal });
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      throw new Error(`HTTP ${res.status} ${res.statusText} ${body}`.trim());
-    }
-    return await res.text();
-  } finally {
-    clearTimeout(t);
-  }
-}
-
-function parseLastNonZero(data) {
-  if (!Array.isArray(data)) return undefined;
-  for (let i = data.length - 1; i >= 0; i--) {
-    const v = Number(data[i]);
-    if (Number.isFinite(v) && v > 0) return v;
-  }
-  return undefined;
-}
-
-async function fetchAu9999(instid, timeoutMs) {
-  const url = 'https://en.sge.com.cn/graph/quotations';
-  const body = new URLSearchParams({ instid });
-
-  const text = await fetchWithTimeout(
-    url,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        Accept: 'application/json, text/javascript, */*; q=0.01',
-      },
-      body,
-    },
-    timeoutMs,
-  );
-
-  const json = JSON.parse(text);
-  const price = parseLastNonZero(json.data);
-  const update = json.delaystr || '';
-  return { price, update };
-}
+// NOTE: Fetch happens in the service worker (background.js) so that we can apply
+// market-close logic + optional international fallback and keep all network policy in one place.
 
 const DEFAULTS = {
   instid: 'Au99.99',
@@ -94,16 +50,20 @@ async function tickLoop() {
   const max = Math.max(5, cfg.backoffMaxSeconds);
 
   try {
-    const { price, update } = await fetchAu9999(cfg.instid, cfg.timeoutMs);
-    if (price == null) throw new Error('SGE returned no usable price');
+    const { price, update, stale, effectiveIntervalSeconds } = await chrome.runtime.sendMessage({ type: 'FETCH_TICK' });
+    if (price == null) throw new Error('No usable price');
 
     consecutiveFailures = 0;
-    currentInterval = base;
+    currentInterval = effectiveIntervalSeconds ?? base;
+
+    const titleLines = [`${cfg.instid}: ${price.toFixed(2)} ¥/g`];
+    if (update) titleLines.push(String(update));
+    if (stale) titleLines.push('SGE closed/stale; showing fallback');
 
     await setBadge({
       text: formatBadge(price),
-      title: `${cfg.instid}: ${price.toFixed(2)} ¥/g\n${update}`.trim(),
-      bgColor: '#2E7D32',
+      title: titleLines.join('\n').trim(),
+      bgColor: stale ? '#1565C0' : '#2E7D32',
       color: '#FFFFFF',
     });
   } catch (e) {
@@ -139,13 +99,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // Note: returning `true` keeps the message channel open for async sendResponse.
   (async () => {
     if (msg.type === 'FETCH') {
-      const { instid, timeoutMs } = msg;
-      try {
-        const data = await fetchAu9999(instid, timeoutMs);
-        sendResponse({ ok: true, ...data });
-      } catch (e) {
-        sendResponse({ ok: false, error: String(e?.message || e) });
-      }
+      sendResponse({ ok: false, error: 'FETCH is not supported in offscreen (handled by service worker)' });
       return;
     }
 

@@ -2,6 +2,8 @@ const DEFAULTS = {
   intervalSeconds: 5,
   timeoutMs: 8000,
   backoffMaxSeconds: 60,
+  afterCloseMode: 'intl',
+  closedIntervalSeconds: 60,
 };
 
 async function load() {
@@ -10,12 +12,16 @@ async function load() {
   document.getElementById('intervalSeconds').value = String(cfg.intervalSeconds ?? DEFAULTS.intervalSeconds);
   document.getElementById('timeoutMs').value = String(cfg.timeoutMs ?? DEFAULTS.timeoutMs);
   document.getElementById('backoffMaxSeconds').value = String(cfg.backoffMaxSeconds ?? DEFAULTS.backoffMaxSeconds);
+  document.getElementById('afterCloseMode').value = String(cfg.afterCloseMode ?? DEFAULTS.afterCloseMode);
+  document.getElementById('closedIntervalSeconds').value = String(cfg.closedIntervalSeconds ?? DEFAULTS.closedIntervalSeconds);
 }
 
 async function save() {
   const intervalSeconds = Number(document.getElementById('intervalSeconds').value);
   const timeoutMs = Number(document.getElementById('timeoutMs').value);
   const backoffMaxSeconds = Number(document.getElementById('backoffMaxSeconds').value);
+  const afterCloseMode = String(document.getElementById('afterCloseMode').value || DEFAULTS.afterCloseMode);
+  const closedIntervalSeconds = Number(document.getElementById('closedIntervalSeconds').value);
 
   await chrome.runtime.sendMessage({
     type: 'SET_CONFIG',
@@ -23,6 +29,8 @@ async function save() {
       intervalSeconds: Math.max(1, Math.floor(intervalSeconds || DEFAULTS.intervalSeconds)),
       timeoutMs: Math.max(1000, Math.floor(timeoutMs || DEFAULTS.timeoutMs)),
       backoffMaxSeconds: Math.max(5, Math.floor(backoffMaxSeconds || DEFAULTS.backoffMaxSeconds)),
+      afterCloseMode,
+      closedIntervalSeconds: Math.max(10, Math.floor(closedIntervalSeconds || DEFAULTS.closedIntervalSeconds)),
     },
   });
 

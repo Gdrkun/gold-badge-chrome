@@ -19,6 +19,7 @@
     "offscreen"
   ],
   "host_permissions": [
-    "https://en.sge.com.cn/*"
+    "https://en.sge.com.cn/*",
+    "https://stooq.com/*"
   ]
 }

@@ -33,6 +33,21 @@
       <input id="timeoutMs" type="number" min="1000" step="500" />
     </div>
 
+    <div class="row">
+      <label>收盘后显示模式</label>
+      <select id="afterCloseMode">
+        <option value="intl">显示国际价近似（XAUUSD×USDCNY → ¥/g）</option>
+        <option value="freeze">保持上金所最后价（不再追更）</option>
+      </select>
+      <div class="muted">上金所收盘后不会再有新数据；国际价为近似值。</div>
+    </div>
+
+    <div class="row">
+      <label>收盘后刷新间隔（秒）</label>
+      <input id="closedIntervalSeconds" type="number" min="10" step="1" />
+      <div class="muted">建议 60 秒或更慢，避免无意义请求。</div>
+    </div>
+
     <button id="save">保存</button><span id="saved" class="ok" style="display:none;">已保存</span>
 
     <script type="module" src="options.js"></script>
