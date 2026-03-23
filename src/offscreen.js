@@ -63,17 +63,11 @@ function formatBadge(price) {
   return price.toFixed(1);
 }
 
-async function setBadge({ text, title, color, bgColor }) {
-  await chrome.action.setBadgeText({ text });
-  if (typeof bgColor !== 'undefined') {
-    await chrome.action.setBadgeBackgroundColor({ color: bgColor });
-  }
-  if (typeof color !== 'undefined') {
-    await chrome.action.setBadgeTextColor({ color });
-  }
-  if (title) {
-    await chrome.action.setTitle({ title });
-  }
+async function setBadge(payload) {
+  // Offscreen documents do not always have chrome.action.* available.
+  // Delegate badge updates to the extension service worker.
+  const res = await chrome.runtime.sendMessage({ type: 'SET_BADGE', payload });
+  if (!res?.ok) throw new Error(res?.error || 'SET_BADGE failed');
 }
 
 let stopped = false;

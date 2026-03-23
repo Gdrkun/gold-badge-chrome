@@ -23,6 +23,15 @@ async function ensureOffscreen() {
   });
 }
 
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg?.type === 'SET_BADGE') {
+    setBadge(msg.payload)
+      .then(() => sendResponse({ ok: true }))
+      .catch((e) => sendResponse({ ok: false, error: String(e?.message || e) }));
+    return true;
+  }
+});
+
 chrome.runtime.onInstalled.addListener(async () => {
   await setBadge({ text: '...', title: 'Au99.99: initializing', bgColor: '#455A64', color: '#FFFFFF' });
   await ensureOffscreen();
