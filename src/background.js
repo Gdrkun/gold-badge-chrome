@@ -129,6 +129,68 @@ function parseStooqRow(csv) {
   return { close, tsText };
 }
 
+function tzOffsetMinutes(date, timeZone) {
+  // Returns timezone offset in minutes for a given Date.
+  const dtf = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+  const parts = dtf.formatToParts(date).reduce((acc, p) => {
+    if (p.type !== 'literal') acc[p.type] = p.value;
+    return acc;
+  }, {});
+  const asUTC = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(parts.hour),
+    Number(parts.minute),
+    Number(parts.second),
+  );
+  return (asUTC - date.getTime()) / 60000;
+}
+
+function parseZonedDateTimeToUtcMs(tsText, timeZone) {
+  // tsText: "YYYY-MM-DD HH:MM:SS" interpreted in `timeZone`.
+  const m = String(tsText).match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
+  if (!m) return undefined;
+  const [_, yy, mo, dd, hh, mm, ss] = m;
+  const baseUtc = Date.UTC(Number(yy), Number(mo) - 1, Number(dd), Number(hh), Number(mm), Number(ss));
+  // One-step correction using timezone offset at the guessed moment.
+  const offMin = tzOffsetMinutes(new Date(baseUtc), timeZone);
+  return baseUtc - offMin * 60000;
+}
+
+function formatInTz(date, timeZone) {
+  return new Intl.DateTimeFormat('zh-CN', {
+    timeZone,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(date);
+}
+
+function explainStooqTs(tsText) {
+  // Stooq is Poland-based; their timestamps typically align with Europe/Warsaw.
+  if (!tsText) return '';
+  const warsawTz = 'Europe/Warsaw';
+  const utcMs = parseZonedDateTimeToUtcMs(tsText, warsawTz);
+  if (utcMs == null) return `@ ${tsText} (Stooq)`;
+  const d = new Date(utcMs);
+  const bj = formatInTz(d, 'Asia/Shanghai');
+  return `@ ${tsText} (华沙) / ${bj} (北京)`;
+}
+
 async function fetchIntlApprox(cfg) {
   // International approx (near-real-time): prefer XAUCNY direct (CNY/oz), else XAUUSD×USDCNY.
   const OZ_TO_GRAM = 31.1034768;
@@ -229,7 +291,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const intl = await fetchIntlApprox(cfg).catch(() => undefined);
         if (intl?.cnyPerGram != null) {
           price = intl.cnyPerGram;
-          update = `${intl.sourceText}${intl.tsText ? ` @ ${intl.tsText}` : ''}  ${sge.updateText || ''}`.trim();
+          update = `${intl.sourceText}${intl.tsText ? ` ${explainStooqTs(intl.tsText)}` : ''}  ${sge.updateText || ''}`.trim();
         }
       }
 
