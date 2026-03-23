@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare package (unpacked)
+        run: |
+          set -e
+          mkdir -p dist/unpacked
+          cp -r src/* dist/unpacked/
+          # Add a short install note for people downloading the ZIP.
+          cat > dist/unpacked/INSTALL.txt <<'TXT'
+          Au99.99 Badge (Chrome)
+
+          Install:
+          1) Open chrome://extensions
+          2) Enable Developer mode
+          3) Load unpacked
+          4) Select this folder (the one containing manifest.json)
+
+          Options:
+          - chrome://extensions -> Au99.99 Badge -> Details -> Extension options
+          TXT
+
+      - name: Create ZIP
+        run: |
+          set -e
+          cd dist/unpacked
+          python3 -m zipfile -c ../../gold-badge-chrome-${GITHUB_REF_NAME}.zip .
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            gold-badge-chrome-*.zip
+          generate_release_notes: true
