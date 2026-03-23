@@ -168,7 +168,7 @@ function parseZonedDateTimeToUtcMs(tsText, timeZone) {
 }
 
 function formatInTz(date, timeZone) {
-  return new Intl.DateTimeFormat('zh-CN', {
+  return new Intl.DateTimeFormat(undefined, {
     timeZone,
     hour12: false,
     year: 'numeric',
@@ -180,15 +180,23 @@ function formatInTz(date, timeZone) {
   }).format(date);
 }
 
-function explainStooqTs(tsText) {
+function formatStooqTsToLocal(tsText) {
+  // Convert Stooq timestamp into the browser's local timezone for display.
   // Stooq is Poland-based; their timestamps typically align with Europe/Warsaw.
   if (!tsText) return '';
   const warsawTz = 'Europe/Warsaw';
   const utcMs = parseZonedDateTimeToUtcMs(tsText, warsawTz);
-  if (utcMs == null) return `@ ${tsText} (Stooq)`;
-  const d = new Date(utcMs);
-  const bj = formatInTz(d, 'Asia/Shanghai');
-  return `@ ${tsText} (华沙) / ${bj} (北京)`;
+  if (utcMs == null) return tsText;
+  // Intl without explicit timeZone => browser local time.
+  return new Intl.DateTimeFormat(undefined, {
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(new Date(utcMs));
 }
 
 async function fetchIntlApprox(cfg) {
@@ -291,7 +299,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const intl = await fetchIntlApprox(cfg).catch(() => undefined);
         if (intl?.cnyPerGram != null) {
           price = intl.cnyPerGram;
-          update = `${intl.sourceText}${intl.tsText ? ` ${explainStooqTs(intl.tsText)}` : ''}  ${sge.updateText || ''}`.trim();
+          update = `${intl.sourceText}${intl.tsText ? ` @ ${formatStooqTsToLocal(intl.tsText)}` : ''}  ${sge.updateText || ''}`.trim();
         }
       }
 
