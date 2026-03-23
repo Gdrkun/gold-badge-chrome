@@ -4,6 +4,7 @@ const DEFAULTS = {
   backoffMaxSeconds: 60,
   afterCloseMode: 'intl',
   closedIntervalSeconds: 60,
+  displayMode: 'hover',
 };
 
 async function load() {
@@ -14,6 +15,7 @@ async function load() {
   document.getElementById('backoffMaxSeconds').value = String(cfg.backoffMaxSeconds ?? DEFAULTS.backoffMaxSeconds);
   document.getElementById('afterCloseMode').value = String(cfg.afterCloseMode ?? DEFAULTS.afterCloseMode);
   document.getElementById('closedIntervalSeconds').value = String(cfg.closedIntervalSeconds ?? DEFAULTS.closedIntervalSeconds);
+  document.getElementById('displayMode').value = String(cfg.displayMode ?? DEFAULTS.displayMode);
 }
 
 async function save() {
@@ -22,6 +24,7 @@ async function save() {
   const backoffMaxSeconds = Number(document.getElementById('backoffMaxSeconds').value);
   const afterCloseMode = String(document.getElementById('afterCloseMode').value || DEFAULTS.afterCloseMode);
   const closedIntervalSeconds = Number(document.getElementById('closedIntervalSeconds').value);
+  const displayMode = String(document.getElementById('displayMode').value || DEFAULTS.displayMode);
 
   await chrome.runtime.sendMessage({
     type: 'SET_CONFIG',
@@ -31,6 +34,7 @@ async function save() {
       backoffMaxSeconds: Math.max(5, Math.floor(backoffMaxSeconds || DEFAULTS.backoffMaxSeconds)),
       afterCloseMode,
       closedIntervalSeconds: Math.max(10, Math.floor(closedIntervalSeconds || DEFAULTS.closedIntervalSeconds)),
+      displayMode,
     },
   });
 

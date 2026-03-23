@@ -33,6 +33,11 @@ const DEFAULTS = {
   // - intl: show international approx (XAUUSD×USDCNY -> CNY/g)
   afterCloseMode: 'intl',
   closedIntervalSeconds: 60,
+
+  // How to display price on the toolbar:
+  // - hover: hide badge text, show full info in tooltip on hover
+  // - badge: show short price in badge
+  displayMode: 'hover',
 };
 
 async function getConfig() {
@@ -154,6 +159,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
+  if (msg?.type === 'PING') {
+    // No-op; used to nudge offscreen to reload config sooner.
+    sendResponse({ ok: true });
+    return;
+  }
+
   if (msg?.type === 'GET_CONFIG') {
     getConfig()
       .then((config) => sendResponse({ ok: true, config }))
@@ -196,6 +207,23 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
       // 3) Tell offscreen how often to poll
       const effectiveIntervalSeconds = stale ? Math.max(10, Number(cfg.closedIntervalSeconds) || 60) : Math.max(1, cfg.intervalSeconds);
+
+      // 4) Apply display mode at the source of truth (service worker)
+      // - hover: hide badge text, keep tooltip
+      // - badge: show short price in badge
+      const displayMode = cfg.displayMode || 'hover';
+      const badgeText = displayMode === 'badge' && price != null ? (price >= 1000 ? String(Math.round(price)) : price.toFixed(1)) : '';
+      const badgeBg = stale ? '#1565C0' : '#2E7D32';
+      const tooltipLines = [`${cfg.instid}: ${price != null ? price.toFixed(2) : '--'} ¥/g`];
+      if (update) tooltipLines.push(String(update));
+      if (stale) tooltipLines.push('SGE closed/stale; showing fallback');
+
+      await setBadge({
+        text: badgeText,
+        title: tooltipLines.join('\n').trim(),
+        bgColor: badgeBg,
+        color: '#FFFFFF',
+      });
 
       sendResponse({ ok: true, price, update, stale, effectiveIntervalSeconds });
     })().catch((e) => {

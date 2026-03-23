@@ -48,6 +48,15 @@
       <div class="muted">建议 60 秒或更慢，避免无意义请求。</div>
     </div>
 
+    <div class="row">
+      <label>显示方式</label>
+      <select id="displayMode">
+        <option value="hover">仅悬停显示（不在 badge 显示数字）</option>
+        <option value="badge">badge 显示数字</option>
+      </select>
+      <div class="muted">“仅悬停显示”更隐蔽：鼠标移动到扩展图标上才显示价格（在 tooltip）。</div>
+    </div>
+
     <button id="save">保存</button><span id="saved" class="ok" style="display:none;">已保存</span>
 
     <script type="module" src="options.js"></script>

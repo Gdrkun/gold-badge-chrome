@@ -50,22 +50,14 @@ async function tickLoop() {
   const max = Math.max(5, cfg.backoffMaxSeconds);
 
   try {
-    const { price, update, stale, effectiveIntervalSeconds } = await chrome.runtime.sendMessage({ type: 'FETCH_TICK' });
+    const { price, effectiveIntervalSeconds } = await chrome.runtime.sendMessage({ type: 'FETCH_TICK' });
     if (price == null) throw new Error('No usable price');
 
     consecutiveFailures = 0;
     currentInterval = effectiveIntervalSeconds ?? base;
-
-    const titleLines = [`${cfg.instid}: ${price.toFixed(2)} ¥/g`];
-    if (update) titleLines.push(String(update));
-    if (stale) titleLines.push('SGE closed/stale; showing fallback');
-
-    await setBadge({
-      text: formatBadge(price),
-      title: titleLines.join('\n').trim(),
-      bgColor: stale ? '#1565C0' : '#2E7D32',
-      color: '#FFFFFF',
-    });
+    // Badge + tooltip updates are handled by the service worker in FETCH_TICK.
+    // Keep offscreen minimal & stable.
+    void price;
   } catch (e) {
     consecutiveFailures++;
     currentInterval = Math.min(max, base * Math.pow(2, Math.max(0, consecutiveFailures - 1)));
