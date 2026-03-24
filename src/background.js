@@ -284,7 +284,7 @@ function formatStooqTsToLocal(tsText) {
 }
 
 async function fetchIntlApprox(cfg) {
-  // International approx (near-real-time): use XAUUSD×USDCNY only.
+  // World (near-real-time) approximation: XAUUSD × USDCNY -> CNY/g.
   // NOTE: Stooq's XAUCNY is sometimes inconsistent vs cross rate; avoid it to prevent spikes.
   const OZ_TO_GRAM = 31.1034768;
 
@@ -296,13 +296,18 @@ async function fetchIntlApprox(cfg) {
     fetchText(fxUrl, { headers: { Accept: 'text/csv,*/*' } }, cfg.timeoutMs),
   ]);
 
-  const xau = parseStooqRow(xauCsv);
-  const fx = parseStooqRow(fxCsv);
+  const xau = parseStooqRow(xauCsv); // USD/oz
+  const fx = parseStooqRow(fxCsv);  // CNY per USD
   if (!xau || !fx) return undefined;
 
+  const xauUsdPerOz = xau.close;
+  const usdCny = fx.close;
+
   return {
-    cnyPerGram: (xau.close * fx.close) / OZ_TO_GRAM,
-    sourceText: 'Stooq XAUUSD×USDCNY',
+    xauUsdPerOz,
+    usdCny,
+    cnyPerGram: (xauUsdPerOz * usdCny) / OZ_TO_GRAM,
+    sourceText: 'Stooq',
     tsText: xau.tsText || fx.tsText,
   };
 }
@@ -372,7 +377,21 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const intl = await fetchIntlApprox(cfg).catch(() => undefined);
         if (intl?.cnyPerGram != null && isReasonableCnyPerGram(intl.cnyPerGram)) {
           price = intl.cnyPerGram;
-          update = `${intl.sourceText}${intl.tsText ? ` @ ${formatStooqTsToLocal(intl.tsText)}` : ''}  ${sge.updateText || ''}`.trim();
+
+          const ts = intl.tsText ? formatStooqTsToLocal(intl.tsText) : '';
+          const xau = intl.xauUsdPerOz != null ? intl.xauUsdPerOz.toFixed(2) : '--';
+          const fx = intl.usdCny != null ? intl.usdCny.toFixed(4) : '--';
+
+          // Show source (raw) + converted value in the tooltip.
+          update = [
+            `${intl.sourceText}${ts ? ` @ ${ts}` : ''}`,
+            `XAUUSD: ${xau} $/oz`,
+            `USDCNY: ${fx}`,
+            sge.updateText ? `SGE last: ${sge.updateText}` : '',
+          ]
+            .filter(Boolean)
+            .join('  ');
+
           usedFallback = true;
         } else if (lastGoodPrice != null) {
           // Bad fallback data; hold last known good value.
