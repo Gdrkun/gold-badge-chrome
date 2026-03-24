@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Au99.99 Badge",
-  "version": "0.1.1", 
+  "version": "0.1.2",
   "description": "Show SGE Au99.99 price on the toolbar badge.",
   "action": {
     "default_title": "Au99.99"
