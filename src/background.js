@@ -97,12 +97,37 @@ function lastNonZero(arr) {
 }
 
 function pickSgeLatestPrice(j) {
-  // SGE returns a full session minute-series; future minutes may be filled with the previous close.
-  // So using the last element is WRONG during the session.
-  // We must select the data point corresponding to `delaystr` (last update time).
+  // SGE returns a full session minute-series; a long tail of "future" minutes may be prefilled
+  // with a constant value (often the close). Using the last element is WRONG during the session.
+  // Prefer the data point corresponding to `delaystr` (last update time), but guard against
+  // landing inside a prefilled constant tail.
   const times = j?.times;
   const data = j?.data;
   const delaystr = j?.delaystr;
+
+  const EPS = 1e-9;
+
+  function isFinitePos(n) {
+    return typeof n === 'number' && Number.isFinite(n) && n > 0;
+  }
+
+  function findConstantTailStart(arr) {
+    if (!Array.isArray(arr) || arr.length < 2) return arr?.length ?? 0;
+    const tail = Number(arr[arr.length - 1]);
+    if (!Number.isFinite(tail)) return arr.length;
+    let s = arr.length - 1;
+    while (s > 0) {
+      const prev = Number(arr[s - 1]);
+      if (!Number.isFinite(prev)) break;
+      if (Math.abs(prev - tail) > EPS) break;
+      s--;
+    }
+    return s; // [s..end] is constant tail
+  }
+
+  const tailStart = findConstantTailStart(data);
+  const tailLen = Array.isArray(data) ? data.length - tailStart : 0;
+  const hasLongTail = tailLen >= 5; // heuristic: >=5 minutes identical is probably prefill
 
   let pointTime;
   const m = String(delaystr || '').match(/(\d{2}):(\d{2}):(\d{2})/);
@@ -112,8 +137,29 @@ function pickSgeLatestPrice(j) {
     const idx = times.lastIndexOf(pointTime);
     if (idx >= 0 && idx < data.length) {
       const v = Number(data[idx]);
-      if (Number.isFinite(v) && v > 0) {
+
+      // If the matched point falls into a long constant tail, treat it as prefilled and step back.
+      if (hasLongTail && idx >= tailStart) {
+        for (let i = tailStart - 1; i >= 0; i--) {
+          const vv = Number(data[i]);
+          if (isFinitePos(vv)) {
+            return { price: vv, pointTime: times[i] };
+          }
+        }
+      }
+
+      if (isFinitePos(v)) {
         return { price: v, pointTime };
+      }
+    }
+  }
+
+  // Fallback: last non-zero, but prefer values before a long constant tail if present.
+  if (Array.isArray(data) && hasLongTail) {
+    for (let i = tailStart - 1; i >= 0; i--) {
+      const v = Number(data[i]);
+      if (isFinitePos(v)) {
+        return { price: v, pointTime: Array.isArray(times) ? times[i] : undefined };
       }
     }
   }
@@ -124,6 +170,9 @@ function pickSgeLatestPrice(j) {
 async function fetchSgeAu9999(cfg) {
   const url = 'https://en.sge.com.cn/graph/quotations';
   const body = new URLSearchParams({ instid: cfg.instid });
+
+  // SGE endpoints can return 403 for non-browser-like requests.
+  // Provide a lightweight UA (and typical AJAX accept) to reduce WAF false-positives.
   const text = await fetchText(
     url,
     {
@@ -131,11 +180,13 @@ async function fetchSgeAu9999(cfg) {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
         Accept: 'application/json, text/javascript, */*; q=0.01',
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
       },
       body,
     },
     cfg.timeoutMs,
   );
+
   const j = JSON.parse(text);
   const updateText = j.delaystr || '';
   const updateAt = parseSgeDelayStr(updateText);
