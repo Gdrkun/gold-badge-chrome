@@ -96,6 +96,31 @@ function lastNonZero(arr) {
   return undefined;
 }
 
+function pickSgeLatestPrice(j) {
+  // SGE returns a full session minute-series; future minutes may be filled with the previous close.
+  // So using the last element is WRONG during the session.
+  // We must select the data point corresponding to `delaystr` (last update time).
+  const times = j?.times;
+  const data = j?.data;
+  const delaystr = j?.delaystr;
+
+  let pointTime;
+  const m = String(delaystr || '').match(/(\d{2}):(\d{2}):(\d{2})/);
+  if (m) pointTime = `${m[1]}:${m[2]}`;
+
+  if (pointTime && Array.isArray(times) && Array.isArray(data)) {
+    const idx = times.lastIndexOf(pointTime);
+    if (idx >= 0 && idx < data.length) {
+      const v = Number(data[idx]);
+      if (Number.isFinite(v) && v > 0) {
+        return { price: v, pointTime };
+      }
+    }
+  }
+
+  return { price: lastNonZero(data), pointTime: undefined };
+}
+
 async function fetchSgeAu9999(cfg) {
   const url = 'https://en.sge.com.cn/graph/quotations';
   const body = new URLSearchParams({ instid: cfg.instid });
@@ -112,10 +137,12 @@ async function fetchSgeAu9999(cfg) {
     cfg.timeoutMs,
   );
   const j = JSON.parse(text);
-  const price = lastNonZero(j.data);
   const updateText = j.delaystr || '';
   const updateAt = parseSgeDelayStr(updateText);
-  return { price, updateText, updateAt };
+  const picked = pickSgeLatestPrice(j);
+  const price = picked.price;
+  const extra = picked.pointTime ? ` (point ${picked.pointTime})` : '';
+  return { price, updateText: updateText + extra, updateAt };
 }
 
 function parseStooqRow(csv) {
