@@ -66,6 +66,12 @@ function isStaleShanghai(lastUpdate, now = new Date()) {
   return ageMs > 3 * 60 * 1000; // 3 minutes
 }
 
+function isReasonableCnyPerGram(v) {
+  // Guardrail to avoid crazy spikes from bad data.
+  // Gold in CNY/g is typically in the 300~1000 range historically.
+  return typeof v === 'number' && Number.isFinite(v) && v >= 100 && v <= 2000;
+}
+
 async function fetchText(url, init, timeoutMs) {
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), timeoutMs);
@@ -200,26 +206,10 @@ function formatStooqTsToLocal(tsText) {
 }
 
 async function fetchIntlApprox(cfg) {
-  // International approx (near-real-time): prefer XAUCNY direct (CNY/oz), else XAUUSD×USDCNY.
+  // International approx (near-real-time): use XAUUSD×USDCNY only.
+  // NOTE: Stooq's XAUCNY is sometimes inconsistent vs cross rate; avoid it to prevent spikes.
   const OZ_TO_GRAM = 31.1034768;
 
-  // Prefer direct XAUCNY
-  try {
-    const url = 'https://stooq.com/q/l/?s=xaucny&f=sd2t2c&h&e=csv&t=' + Date.now();
-    const csv = await fetchText(url, { headers: { Accept: 'text/csv,*/*' } }, cfg.timeoutMs);
-    const row = parseStooqRow(csv);
-    if (row?.close != null) {
-      return {
-        cnyPerGram: row.close / OZ_TO_GRAM,
-        sourceText: 'Stooq XAUCNY',
-        tsText: row.tsText,
-      };
-    }
-  } catch {
-    // fall through
-  }
-
-  // Fallback: XAUUSD×USDCNY
   const xauUrl = 'https://stooq.com/q/l/?s=xauusd&f=sd2t2c&h&e=csv&t=' + Date.now();
   const fxUrl = 'https://stooq.com/q/l/?s=usdcny&f=sd2t2c&h&e=csv&t=' + Date.now();
 
@@ -294,27 +284,42 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       // 2) Decide what to show
       let price = sge.price;
       let update = sge.updateText;
+      let usedFallback = false;
+
+      // keep last good value to avoid spikes
+      const state = await chrome.storage.local.get(['lastGoodPrice', 'lastGoodUpdate']);
+      const lastGoodPrice = typeof state.lastGoodPrice === 'number' ? state.lastGoodPrice : undefined;
 
       if ((price == null || stale) && cfg.afterCloseMode === 'intl') {
         const intl = await fetchIntlApprox(cfg).catch(() => undefined);
-        if (intl?.cnyPerGram != null) {
+        if (intl?.cnyPerGram != null && isReasonableCnyPerGram(intl.cnyPerGram)) {
           price = intl.cnyPerGram;
           update = `${intl.sourceText}${intl.tsText ? ` @ ${formatStooqTsToLocal(intl.tsText)}` : ''}  ${sge.updateText || ''}`.trim();
+          usedFallback = true;
+        } else if (lastGoodPrice != null) {
+          // Bad fallback data; hold last known good value.
+          price = lastGoodPrice;
+          update = `Hold last value (bad fallback)  ${sge.updateText || ''}`.trim();
+          usedFallback = true;
         }
+      }
+
+      // persist last good
+      if (price != null && isReasonableCnyPerGram(price)) {
+        await chrome.storage.local.set({ lastGoodPrice: price, lastGoodUpdate: update || '' });
       }
 
       // 3) Tell offscreen how often to poll
       const effectiveIntervalSeconds = stale ? Math.max(10, Number(cfg.closedIntervalSeconds) || 60) : Math.max(1, cfg.intervalSeconds);
 
       // 4) Apply display mode at the source of truth (service worker)
-      // - hover: hide badge text, keep tooltip
-      // - badge: show short price in badge
       const displayMode = cfg.displayMode || 'hover';
       const badgeText = displayMode === 'badge' && price != null ? (price >= 1000 ? String(Math.round(price)) : price.toFixed(1)) : '';
-      const badgeBg = stale ? '#1565C0' : '#2E7D32';
+      const badgeBg = usedFallback ? '#1565C0' : '#2E7D32';
       const tooltipLines = [`${cfg.instid}: ${price != null ? price.toFixed(2) : '--'} ¥/g`];
       if (update) tooltipLines.push(String(update));
-      if (stale) tooltipLines.push('SGE closed/stale; showing fallback (approx)');
+      if (usedFallback) tooltipLines.push('Fallback/hold in effect');
+      if (stale) tooltipLines.push('SGE closed/stale');
 
       await setBadge({
         text: badgeText,
